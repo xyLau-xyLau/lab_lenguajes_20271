@@ -46,7 +46,7 @@ tokens :-
   eq                    { \_ -> TokenEq }
   add1                  { \_ -> TokenAdd1 }
   sub1                  { \_ -> TokenSub1 }
-  zero\?                 { \_ -> TokenZeroP}
+  zero\?                { \_ -> TokenZeroP}
   .                     { \s -> error ("Lexical error: caracter no reconocido = "
                                       ++ show s
                                       ++ " | codepoints = "
