@@ -45,8 +45,8 @@ ASA : nat                             { Num $1 }
     | '(' "zero?" ASA ')'             { ZeroP $3 }
     | '(' "expt" ASA ASA ')'          { Expt $3 $4 }
     | '(' "eq" ASA ASA ')'            { EqP $3 $4 }
-    | '(' "and" args ')'              { And $3}
-    | '(' "or" args ')'               { Or $3}
+    | '(' "and" args ')'              { And $3 }
+    | '(' "or" args ')'               { Or $3 }
     | '(' '+' args ')'                { Add $3 }
     | '(' '-' args ')'                { Sub $3 }
     | '(' '*' args ')'                { Mul $3 }
@@ -58,7 +58,7 @@ ASA : nat                             { Num $1 }
 -- RETO 3:
 -- Agrega un no terminal para representar dos o mas argumentos.
 -- El resultado debe ser una lista de ASA.
-args : ASA ASA {[$1, $2]}
+args : ASA ASA { [$1, $2] }
      | ASA args { $1 : $2 }
 
 {
