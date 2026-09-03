@@ -41,10 +41,10 @@ tokens :-
   "#f"                       { \_ -> TokenBool False }
 -- RETO 1
 -- Agrega, en el orden correcto, las reglas para:
---   let, let* e identificadores.
+-- let, let* e identificadores.
   let                        { \_ -> TokenLet}
   "let*"                     { \_ -> TokenLetStar}
-  [A-Za-z][a-zA-Z0-9_]*     { \s -> TokenId s}
+  $letter $idrest*      { \s -> TokenId s}
 
   0$digit+              { \s -> error ("Lexical error: natural con cero inicial = "
                                       ++ show s) }
