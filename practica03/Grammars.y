@@ -71,6 +71,7 @@ Binding : '(' var ASA ')'               { ($2, $3) }
 Bindings : Binding                  { [$1] }
          | Binding Bindings        {$1 : $2}
 
+{
 parseError :: [Token] -> a
 parseError toks = error ("Parse error: " ++ show toks)
 
