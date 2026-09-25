@@ -59,7 +59,59 @@ binaryOpAux f x xs = Just(foldl (f) x xs)
 -- mediante LetS x e1 e2 ==> App (Fun x e2') e1'. La primera ligadura debe
 -- quedar en el let exterior para que las siguientes puedan usarla.
 desugar :: SASA -> Maybe ASA
-desugar _ = Nothing
+desugar (IdS x) = Just (Id x)
+desugar (NumS n) = Just (Num n)
+desugar (BooleanS b) = Just (Boolean b)
+desugar (AddS args) = desugarBinaryOp Add args
+desugar (SubS args) = desugarBinaryOp Sub args
+desugar (NotS arg) = case desugaredArg of
+                     Nothing -> Nothing
+                     _ -> Just (Not (getASA desugaredArg))
+                     where desugaredArg = desugar arg
+desugar (LetS var arg body) = case (desugaredArg, desugaredBody) of
+                              (Nothing, _) -> Nothing
+                              (_, Nothing) -> Nothing
+                              _ -> Just (App (Fun var (getASA (desugaredBody))) (getASA (desugaredArg)))
+                              where desugaredArg = desugar arg
+                                    desugaredBody = desugar body
+desugar (LetStarS [] body) = case desugaredBody of
+                             Nothing -> Nothing
+                             _ -> Just (getASA (desugaredBody))
+                             where desugaredBody = (desugar body)
+desugar (LetStarS bindings body) = desugar(desugarLetStarSAux (reverse(bindings)) body)
+desugar (FunS params body) = case desugaredBody of
+                             Nothing -> Nothing
+                             _ -> curryFun params (getASA(desugaredBody))
+                             where desugaredBody = desugar body
+desugar (AppS exp args) = case (desugaredExp, nothingInArgs) of
+                          (Nothing, _) -> Nothing
+                          (_, True) -> Nothing
+                          _ -> curryApp (getASA(desugaredExp)) asaArgs
+                          where desugaredExp = desugar exp
+                                desugaredArgs = map desugar args
+                                nothingInArgs = checkforNothing desugaredArgs
+                                asaArgs = map (getASA) desugaredArgs
+    
+
+getASA :: Maybe ASA -> ASA
+getASA (Just asa) = asa
+
+desugarBinaryOp :: (ASA -> ASA -> ASA) -> [SASA] -> Maybe ASA
+desugarBinaryOp f args = if (elem Nothing desugaredArgs)
+                         then Nothing
+                         else (binaryOp f (map getASA desugaredArgs))
+                         where desugaredArgs = map desugar args
+
+desugarLetStarSAux :: [(Nombre, SASA)] -> SASA -> SASA
+desugarLetStarSAux [] y = y
+desugarLetStarSAux ((nombre, x):xs) y = desugarLetStarSAux xs (LetS nombre x y)
+
+checkforNothing :: [Maybe ASA] -> Bool
+checkforNothing [] = False
+checkforNothing (x:xs) = case x of
+                         Nothing -> True
+                         _ -> checkforNothing xs
+
 
 -- RETO 2: evaluacion con cerraduras ---------------------------------------
 
