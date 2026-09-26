@@ -147,21 +147,22 @@ bigStep env (Sub n m) = subOp n m env
 bigStep env (Not b) = let bEval = bigStep env b
                       in case bEval of
                         (Just (BooleanV False)) -> (Just (BooleanV True))
+                        (Just (ClosureV _ _ _)) -> Nothing
                         _ -> (Just (BooleanV False))
 bigStep env (Fun x f) = Just (ClosureV x f env)
-bigStep env (App f arg) = let closureValue = bigStep env f
-                          in case closureValue of
-                            (Just (ClosureV parameter body definitionEnv)) -> let argumentEval = bigStep env arg
-                                                                                  argumentValue = getValue argumentEval
-                                                                                  appResult = seq parameter
-                                                                                                (seq arg
-                                                                                                  (seq argumentEval
-                                                                                                    (seq argumentValue
-                                                                                                      (bigStep ((parameter, argumentValue) : definitionEnv) body))))
-                                                                              in if (argumentEval == Nothing || appResult == Nothing)
-                                                                                 then Nothing
-                                                                                 else appResult           
-                            _ -> Nothing
+bigStep env (App f arg) = 
+  let closureValue = bigStep env f
+  in case closureValue of
+     (Just (ClosureV parameter body definitionEnv)) -> 
+      let argumentEval = bigStep env arg
+          argumentValue = getValue argumentEval
+          appResult = seq parameter
+                        (seq argumentValue
+                          (bigStep ((parameter, argumentValue) : definitionEnv) body))
+      in if (argumentEval == Nothing || appResult == Nothing)
+         then Nothing
+         else appResult           
+     _ -> Nothing
                               
                         
 -- Función para obtener el Value de Maybe Value
