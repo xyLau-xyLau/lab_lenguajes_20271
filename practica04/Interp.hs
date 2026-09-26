@@ -142,39 +142,44 @@ bigStep :: Env -> ASA -> Maybe Value
 bigStep _ (Num n) = Just (NumV n)
 bigStep _ (Boolean b) = Just (BooleanV b)
 bigStep env (Id x) = lookupEnv x env
-bigStep env (Add n m) = numOp (+) (bigStep env n) (bigStep env m)
-bigStep env (Sub n m) = numOp (-) (bigStep env n) (bigStep env m)
-bigStep env (Not b) = notOp (bigStep env b)
--- Verificar caso límite, x = ""
+bigStep env (Add n m) = addOp n m env
+bigStep env (Sub n m) = subOp n m env
+bigStep env (Not b) = let bEval = bigStep env b
+                      in case bEval of
+                        (Just (BooleanV False)) -> (Just (BooleanV True))
+                        _ -> (Just (BooleanV False))
 bigStep env (Fun x f) = Just (ClosureV x f env)
-bigStep env (App f arg) = seq parameter
-                            (seq argumentValue
-                              (bigStep body
-                                ((parameter, argumentValue) : definitionEnv)))
-                          where closureValue = bigStep f env
-                                parameter = closureP closureValue
-                                body = closureC closureValue
-                                definitionEnv = closureE closureValue
-                                argumentValue = bigStep arg env
-bigStep _ _ = Nothing
+bigStep env (App f arg) = let closureValue = bigStep env f
+                          in case closureValue of
+                            (Just (ClosureV parameter body definitionEnv)) -> let argumentEval = bigStep env arg
+                                                                                  argumentValue = getValue argumentEval
+                                                                                  appResult = seq parameter
+                                                                                                (seq arg
+                                                                                                  (seq argumentEval
+                                                                                                    (seq argumentValue
+                                                                                                      (bigStep ((parameter, argumentValue) : definitionEnv) body))))
+                                                                              in if (argumentEval == Nothing || appResult == Nothing)
+                                                                                 then Nothing
+                                                                                 else appResult           
+                            _ -> Nothing
+                              
+                        
+-- Función para obtener el Value de Maybe Value
+getValue :: Maybe Value -> Value
+getValue (Just x) = x
 
-closure
-closureCPE :: Maybe Value -> (String, Maybe ASA, Env)
-closureCPE (Closure V parameter exp env) = (parameter, exp, env)
-closureCPE _ = ("", Nothing, [])
+-- Función para la regla de suma
+addOp :: ASA -> ASA -> Env -> Maybe Value
+addOp n m env  = let nEval = bigStep env n
+                     mEval = bigStep env m
+                 in case (nEval, mEval) of 
+                    ((Just (NumV j)), (Just (NumV k))) -> (Just (NumV (j + k)))
+                    (_, _) -> Nothing
 
-closureP :: Maybe Value -> Maybe ASA
-closure
-
-
-
--- Función auxiliar para la regla de evaluación de Add y Sub
-numOp :: (Int -> Int -> Int) -> Maybe Value -> Maybe Value -> Maybe Value
-numOp f (Just (NumV n)) (Just (NumV m)) = Just (NumV (max (f n m) 0))
-numOP _ _ _ = Nothing
-
--- Función auxiliar para la regla de evaluación Not
-notOp :: Maybe Value -> Maybe Value
-notOp Nothing = Nothing
-notOp (Just (BooleanV False)) = Just (BooleanV True)
-notOp _ = Just (BooleanV False)
+-- Función para la regla de resta
+subOp :: ASA -> ASA -> Env -> Maybe Value
+subOp n m env  = let nEval = bigStep env n
+                     mEval = bigStep env m
+                 in case (nEval, mEval) of 
+                    ((Just (NumV j)), (Just (NumV k))) -> (Just (NumV (max (j - k) 0)))
+                    (_, _) -> Nothing
