@@ -40,9 +40,22 @@ SASA : var                               { IdS $1 }
      | '(' "lambda" '(' Params ')' SASA ')'
                                          { FunS $4 $6 }
      | '(' SASA Arguments ')'            { AppS $2 $3 }
+
+     -- RETO 2
+     -- Agrega aqui las producciones de:
+     --   (if <condicion> <consecuente> <alternativa>)
+     --   (cond (<condicion> <rama>) ... (else <alternativa>))
+     --   (letrec (<nombre> <definicion>) <cuerpo>)
+     --
+     -- Un cond debe contener al menos una clausula ordinaria y terminar
+     -- siempre con una clausula else. Consume la primera clausula ordinaria
+     -- en la produccion de cond y define un no terminal Clauses para las
+     -- clausulas restantes y el else final.
+
      | '(' "if" SASA SASA SASA ')'       { IfS $3 $4 $5 }
      | '(' "cond" '(' SASA SASA ')' Clauses ')'
-                                         { CondS ($4,$5) $7}
+                                         { let (f,s) = splitClauses(reverse $7) 
+                                           in CondS (($4, $5):f) s }
      | '(' "letrec" '(' var SASA ')' SASA ')'
                                          { LetRecS $4 $5 $7 }
 
@@ -59,10 +72,9 @@ Operands : SASA SASA                     { [$1, $2] }
 Bindings : '(' var SASA ')'              { [($2, $3)] }
          | '(' var SASA ')' Bindings     { ($2, $3) : $5 }
 
-Else : '(' "else" SASA ')'               { ("else", $3) }
+Clauses :  '(' "else" SASA ')'           { [($3, $3)] }
+        |  '(' SASA SASA ')' Clauses     { ($2, $3) : $5 }
 
-Clauses : Else                           { [$1] }
-        | '(' SASA SASA ')' Clauses      { ($2, $3) : $5 }
 
 {
 parseError :: [Token] -> a
@@ -85,4 +97,7 @@ data SASA
   | CondS [(SASA, SASA)] SASA
   | LetRecS Nombre SASA SASA
   deriving (Eq, Show)
+
+splitClauses :: [(SASA, SASA)] -> ([(SASA, SASA)], SASA)
+splitClauses (x:xs) = (xs, fst x)
 }
