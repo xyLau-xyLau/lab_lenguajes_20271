@@ -74,7 +74,7 @@ binaryOp f (x:xs) = Just (foldl f x xs)
 -- Desazucara las clausulas ordinarias de cond en If anidados. La alternativa
 -- else es el ultimo argumento y se conserva como la rama final.
 desugarCond :: [(SASA, SASA)] -> SASA -> Maybe ASA
-desugarCond conds _else = if (desugaredElse == Nothing ||foldr (&&) True (map checkForNothingInTuple desugaredConds)) 
+desugarCond conds _else = if (desugaredElse == Nothing || foldr (&&) True (map checkForNothingInTuple desugaredConds)) 
                           then Nothing
                           else desugarCondAux (reverse(desugaredConds)) desugaredElse
                           where desugaredElse = desugar _else
@@ -150,18 +150,28 @@ desugarBinaryOp f args = if (elem Nothing desugaredArgs)
 -- Auxiliar para transformar LetStarS en LetS 
 desugarLetStarSAux :: [(Nombre, SASA)] -> SASA -> SASA
 desugarLetStarSAux [] y = y
-desugarLetStarSAux ((nombre, x):xs) y = desugarLetStarSAux xs (LetS nombre x y)
+desugarLetStarSAux ((name, x):xs) y = desugarLetStarSAux xs (LetS name x y)
 
 -- RETO 4: evaluacion perezosa con alcance estatico ------------------------
 
 -- Busca la asociacion mas reciente sin exigir su contenido.
 lookupEnv :: Nombre -> Env -> Maybe Value
-lookupEnv _ _ = Nothing
+lookupEnv x [] = Nothing
+lookupEnv x ((name, expr):xs) = if x == name
+                                  then Just expr
+                                  else lookupEnv x xs
 
 -- Exige una cerradura de expresion usando el ambiente guardado. Si al
 -- evaluarla se obtiene otra ExprV, continua hasta producir otro valor.
 strict :: Value -> Maybe Value
-strict _ = Nothing
+strict (ExprV asa env) = strictAux (bigStep env asa)
+strict e = Just e
+
+-- Auxiliar para resolver el caso donde al aplicar strict obtenemos otra expr
+strictAux :: Maybe Value -> Maybe Value
+strictAux (Just e@(ExprV x expr)) = strict e
+strictAux (Just(value)) = Just value
+strictAux Nothing = Nothing
 
 -- Semantica de paso grande con alcance estatico y evaluacion perezosa.
 --
@@ -174,4 +184,45 @@ strict _ = Nothing
 --
 -- La resta sobre naturales permanece truncada en cero.
 bigStep :: Env -> ASA -> Maybe Value
-bigStep _ _ = Nothing
+bigStep _ (Num n) = Just (NumV n)
+bigStep _ (Boolean b) = Just (BooleanV b)
+bigStep env (Id x) = lookupEnv x env
+bigStep env (Add n m) = addOp (strictApp(bigStep env n)) (strictApp(bigStep env m))
+bigStep env (Sub n m) = subOp (strictApp(bigStep env n)) (strictApp(bigStep env m))
+bigStep env (Not b) = notOp (strictApp(bigStep env b))
+bigStep env (Fun x f) = Just (ClosureV x f env)
+bigStep env (App f arg) = appOp env (strictApp(bigStep env f)) arg
+bigStep env (If cond cons alt) = ifOp env (strictApp(bigStep env cond)) cons alt
+
+-- Función para aplicar el punto estricto al resultado de la evaluación con bigStep
+strictApp :: Maybe Value -> Maybe Value
+strictApp (Just v) = strict v
+strictApp Nothing = Nothing
+
+-- Función auxiliar para efectuar suma de dos NumV
+addOp :: Maybe Value -> Maybe Value -> Maybe Value
+addOp (Just (NumV n)) (Just (NumV m)) = Just (NumV (n + m))
+addOp _ _ = Nothing
+
+-- Función auxiliar para efectuar resta truncada de dos NumV
+subOp :: Maybe Value -> Maybe Value -> Maybe Value
+subOp (Just (NumV n)) (Just (NumV m)) = Just (NumV (max 0 (n - m)))
+subOp _ _ = Nothing
+
+-- Función auxiliar para efectuar Not sobre un BooleanV
+notOp :: Maybe Value -> Maybe Value
+notOp (Just (BooleanV False)) = Just (BooleanV True)
+notOp (Just (BooleanV True)) = Just (BooleanV False)
+notOp (Just (NumV _)) = Just (BooleanV False)
+notOp _ = Nothing
+
+-- Función auxiliar para la aplicación
+appOp :: Env -> Maybe Value -> ASA -> Maybe Value
+appOp env (Just (ClosureV param body env')) arg = bigStep ((param, (ExprV arg env)): env') body
+appOp _ _ _ = Nothing
+
+-- Función auxiliar para la evaluación de if
+ifOp :: Env -> Maybe Value -> ASA -> ASA -> Maybe Value
+ifOp env (Just (BooleanV True)) cons _ = bigStep env cons
+ifOp env (Just (BooleanV False)) _ alt = bigStep env alt
+ifOp _ _ _ _ = Nothing
