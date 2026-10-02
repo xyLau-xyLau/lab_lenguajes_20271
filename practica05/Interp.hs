@@ -226,3 +226,5 @@ ifOp :: Env -> Maybe Value -> ASA -> ASA -> Maybe Value
 ifOp env (Just (BooleanV True)) cons _ = bigStep env cons
 ifOp env (Just (BooleanV False)) _ alt = bigStep env alt
 ifOp _ _ _ _ = Nothing
+
+unwrapper (Just x) = x
