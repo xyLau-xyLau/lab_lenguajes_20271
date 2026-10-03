@@ -8,23 +8,30 @@ import System.Console.Haskeline (InputT, defaultSettings, getInputLine, runInput
 
 -- RETO 5: integrar el combinador Y ----------------------------------------
 
--- Representa en el ASA del nucleo el combinador clasico:
---
--- Y = lambda f.
---       (lambda x. f (x x))
---       (lambda x. f (x x))
 combinadorY :: ASA
-combinadorY = getASA(desugar $ parsea "(lambda (f) ((lambda (x) (f (x x))) (lambda (x) (f(x x)))))")
+combinadorY = 
+  unwrapper(desugar 
+    $ parsea "(lambda (f) ((lambda (x) (f (x x))) (lambda (x) (f(x x)))))")
 
 -- Evalua combinadorY en el ambiente vacio y asocia su valor con el nombre Y.
 prelude :: Env
 prelude = [("Y", unwrapper(bigStep [] combinadorY))]
 
-
 -- Integra el analisis, el desazucarado y la evaluacion desde prelude.
 -- El resultado final debe pasar por strict antes de devolverse.
 evalua :: String -> Maybe Value
-evalua x = bigStep prelude (unwrapper(desugar $ parsea (x)))
+evalua x = pasosIntermedios (desugar $ parsea x)
+
+-- Función para integrar la aplicación de strict al resultado de bigstep con una expresión
+-- correctamente desazucarada 
+pasosIntermedios :: Maybe ASA -> Maybe Value
+pasosIntermedios (Just desazucarado) = aplicaStrict (bigStep prelude desazucarado)
+pasosIntermedios _ = Nothing
+
+-- Función para aplicar strict al valor final
+aplicaStrict :: Maybe Value -> Maybe Value
+aplicaStrict (Just value) = strict value
+aplicaStrict Nothing = Nothing
 
 -- Infraestructura provista. No forma parte de los retos.
 repl :: IO ()

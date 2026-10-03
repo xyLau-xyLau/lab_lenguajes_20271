@@ -74,7 +74,8 @@ binaryOp f (x:xs) = Just (foldl f x xs)
 -- Desazucara las clausulas ordinarias de cond en If anidados. La alternativa
 -- else es el ultimo argumento y se conserva como la rama final.
 desugarCond :: [(SASA, SASA)] -> SASA -> Maybe ASA
-desugarCond conds _else = if (desugaredElse == Nothing || foldr (&&) True (map checkForNothingInTuple desugaredConds)) 
+desugarCond conds _else = if (desugaredElse == Nothing || 
+                              foldr (&&) True (map checkForNothingInTuple desugaredConds)) 
                           then Nothing
                           else desugarCondAux (reverse(desugaredConds)) desugaredElse
                           where desugaredElse = desugar _else
@@ -90,69 +91,72 @@ desugarCondAux [] a@(Just asa) = a
 desugarCondAux ((Just a, Just b) : xs) (Just asa) = desugarCondAux xs (Just (If a b asa))
 desugarCondAux _ _ = Nothing
 
--- Elimina toda la sintaxis superficial. CondS se traduce a If anidados.
--- LetRecS f definicion cuerpo se traduce usando el identificador Y:
---
---   LetS f (AppS (IdS "Y") (FunS [f] definicion)) cuerpo
---
--- y despues se elimina tambien ese LetS. LetRecS no pertenece al nucleo.
+-- Desazucarado para convertir expresiones al núcleo
 desugar :: SASA -> Maybe ASA
 desugar (IdS x) = Just (Id x)
 desugar (NumS n) = Just (Num n)
 desugar (BooleanS b) = Just (Boolean b)
 desugar (AddS args) = desugarBinaryOp Add args
 desugar (SubS args) = desugarBinaryOp Sub args
-desugar (NotS arg) = let desugaredArg = desugar arg
-                     in if (desugaredArg == Nothing)
-                        then Nothing
-                        else Just (Not (getASA desugaredArg))
-desugar (LetS var arg body) = if checkForNothingInTuple(desugaredArg, desugaredBody)
-                              then Nothing
-                              else Just (App (Fun var (getASA (desugaredBody))) (getASA (desugaredArg)))
-                              where desugaredArg = desugar arg
-                                    desugaredBody = desugar body
-desugar (LetStarS [] body) = if desugaredBody == Nothing
-                             then Nothing
-                             else Just (getASA (desugaredBody))
-                             where desugaredBody = (desugar body)
+desugar (NotS arg) = desugarNotAux (desugar arg)
+desugar (LetS var arg body) = desugarLetSAux var (desugar arg) (desugar body)
+desugar (LetStarS [] body) = desugarLetStarSAuxEmpty (desugar body)
 desugar (LetStarS bindings body) = desugar(desugarLetStarSAux (reverse(bindings)) body)
-desugar (FunS params body) = if desugaredBody == Nothing
-                             then Nothing
-                             else curryFun params (getASA(desugaredBody))
-                             where desugaredBody = desugar body
-desugar (AppS exp args) = if (desugaredExp == Nothing || nothingInArgs)
-                          then Nothing
-                          else curryApp (getASA(desugaredExp)) asaArgs
-                          where desugaredExp = desugar exp
-                                desugaredArgs = map desugar args
-                                nothingInArgs = elem Nothing desugaredArgs
-                                asaArgs = map (getASA) desugaredArgs
-desugar (IfS cond cons alt) = if (desugaredCond == Nothing || desugaredCons == Nothing || desugaredAlt == Nothing)
-                              then Nothing
-                              else Just(If (getASA(desugaredCond)) (getASA(desugaredCons)) (getASA(desugaredAlt)))
-                              where desugaredCond = desugar cond
-                                    desugaredCons = desugar cons
-                                    desugaredAlt = desugar alt
+desugar (FunS params body) = desugarFunSAux params (desugar body)
+desugar (AppS exp args) = desugarAppSAux (desugar exp) (map desugar args)
+desugar (IfS cond cons alt) = desugarIfSAux (desugar cond) (desugar cons) (desugar alt)
 desugar (CondS conds alt) = desugarCond conds alt
 desugar (LetRecS var arg body) = desugar (LetS var (AppS (IdS "Y") [(FunS [var] arg)]) body)
-
--- Auxiliar para obtener el ASA de un Maybe ASA
-getASA :: Maybe ASA -> ASA
-getASA (Just asa) = asa
 
 -- Auxiliar para desazucarar operaciones narias
 desugarBinaryOp :: (ASA -> ASA -> ASA) -> [SASA] -> Maybe ASA
 desugarBinaryOp f args = if (elem Nothing desugaredArgs)
                          then Nothing
-                         else (binaryOp f (map getASA desugaredArgs))
+                         else (binaryOp f (map unwrapper desugaredArgs))
                          where desugaredArgs = map desugar args
+
+-- Auxiliar para aplicar desugar a NotS
+desugarNotAux:: Maybe ASA -> Maybe ASA
+desugarNotAux (Just a) = Just (Not a)
+desugarNotAux Nothing = Nothing
+
+-- Auxiliar para aplicar desugar a LetS
+desugarLetSAux:: Nombre -> Maybe ASA -> Maybe ASA -> Maybe ASA
+desugarLetSAux var (Just arg) (Just body) = Just (App (Fun var body) arg)
+desugarLetSAux _ _ _ = Nothing
+
+-- Auxiliar para filtrar el caso de LetStarS con bindings vacío
+desugarLetStarSAuxEmpty :: Maybe ASA -> Maybe ASA
+desugarLetStarSAuxEmpty b@(Just _) = b
+desugarLetStarSAuxEmpty Nothing = Nothing
 
 -- Auxiliar para transformar LetStarS en LetS 
 desugarLetStarSAux :: [(Nombre, SASA)] -> SASA -> SASA
 desugarLetStarSAux [] y = y
 desugarLetStarSAux ((name, x):xs) y = desugarLetStarSAux xs (LetS name x y)
 
+-- Auxiliar para desazucarar FunS
+desugarFunSAux :: [Nombre] -> Maybe ASA -> Maybe ASA
+desugarFunSAux _ Nothing = Nothing
+desugarFunSAux params (Just body) = curryFun params body
+
+-- Auxiliar para desazucarar AppS
+desugarAppSAux :: Maybe ASA ->  [Maybe ASA] -> Maybe ASA
+desugarAppSAux Nothing _ = Nothing
+desugarAppSAux (Just exp) args 
+    | elem Nothing args = Nothing
+    | otherwise = curryApp exp (map unwrapper args)
+
+-- Auxiliar para desazucarar IfS
+desugarIfSAux :: Maybe ASA -> Maybe ASA -> Maybe ASA -> Maybe ASA
+desugarIfSAux (Just cond) (Just cons) (Just alt) = Just (If cond cons alt)
+desugarIfSAux _ _ _ = Nothing
+
 -- RETO 4: evaluacion perezosa con alcance estatico ------------------------
+
+---------------
+-- LOOKUPENV --
+---------------
 
 -- Busca la asociacion mas reciente sin exigir su contenido.
 lookupEnv :: Nombre -> Env -> Maybe Value
@@ -160,6 +164,10 @@ lookupEnv x [] = Nothing
 lookupEnv x ((name, expr):xs) = if x == name
                                   then Just expr
                                   else lookupEnv x xs
+
+------------
+-- STRICT --
+------------
 
 -- Exige una cerradura de expresion usando el ambiente guardado. Si al
 -- evaluarla se obtiene otra ExprV, continua hasta producir otro valor.
@@ -173,16 +181,11 @@ strictAux (Just e@(ExprV x expr)) = strict e
 strictAux (Just(value)) = Just value
 strictAux Nothing = Nothing
 
--- Semantica de paso grande con alcance estatico y evaluacion perezosa.
---
--- * Id devuelve directamente la asociacion encontrada.
--- * Fun produce ClosureV con el ambiente de definicion.
--- * App exige la posicion de funcion, pero liga el argumento como
---   ExprV argumento ambienteDeLaLlamada.
--- * Add, Sub y Not exigen sus operandos.
--- * If exige solamente la condicion y evalua una sola rama.
---
--- La resta sobre naturales permanece truncada en cero.
+-------------
+-- BIGSTEP --
+-------------
+
+-- Dado un ambiente y una expresión del lenguaje núcleo obtenemos la evaluación correspondiente
 bigStep :: Env -> ASA -> Maybe Value
 bigStep _ (Num n) = Just (NumV n)
 bigStep _ (Boolean b) = Just (BooleanV b)
@@ -227,4 +230,5 @@ ifOp env (Just (BooleanV True)) cons _ = bigStep env cons
 ifOp env (Just (BooleanV False)) _ alt = bigStep env alt
 ifOp _ _ _ _ = Nothing
 
+-- Función parcial para sacar la expresión x dentro de un resultado (Just x)
 unwrapper (Just x) = x
